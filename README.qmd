@@ -1,0 +1,179 @@
+---
+title: "An analysis of the genre that gives the best rating for Christmas movies"
+author: "Shufan Wang"
+format: 
+  html: 
+    self-contained: true
+    df-print: kable
+  pdf: default
+execute: 
+  warning: false
+number-sections: true
+---
+
+# Load libs
+
+```{r}
+pacman::p_load(tidyverse,readxl,gt,targets)
+```
+
+# Introduction {#sec-introduction}
+
+This analysis aims to find the genre of Christmas movies having the best ratings. 
+
+Firstly, we explored and cleaned the data by deleting the irrelevant variables and removing the observations with missing values. We found some genres have very few observations, which may lead to our result lacking statistical significance. Therefore, we considered the genres more generously in this analysis. To be specific, for observations having genres = "Action, Adventure, Animation", we split the observation into 3 observations that have genres = "Action", "Adventure" and "Animation", respectively. The new dataset is called movies_split.
+
+After we cleaned the data, we made box plots to show the relationship between genres and average ratings. There are still genres that have few observations, so we classified the genres with a rate of occurrence less than 0.01 as "other". The box plots @fig-boxplot_split show that the majority of genres have outliers. Therefore, we chose median value to measure the average ratings, because the mean values will be significantly influenced by the outliers. By comparing the median values, we found that the genre "Documentary" had the highest median average rating.
+
+However, there is a big difference between the number of different genres' mean "num\_votes". For example, the mean of num_votes in "Documentary" is almost 30 times less than in "Drama". It suggests that selecting the best genre only dependent on average ratings might have some potential bias. For example, the high average ratings in "Documentary" were probably rated by a few people who particularly like documentaries. Therefore, we trained a random forest model and extracted the feature importance to find out which genre has the largest positive influence on average rating.
+
+The random forest's hyper-parameters were tuned by 10-fold validation and the best model was selected by the minimum rmse. Excluding genres and num_votes, we also added the interaction terms of them in the model.
+According to the variable importance plot @fig-VIP, the genre "Horror" had the largest positive influence on the average rating. However, if we consider the interaction term, the genre "Drama" had the biggest boost to the average rating.
+
+In summary, if we do not consider the influence of num_votes, the genre "Documentary" has the best rating. However, if we consider the interaction between num_votes and genres, then "Drama" can lead to the best rating.
+
+
+# EDA 
+
+We explored the raw data. The procedure of EDA is given:
+1. Checking the basic structure of the data: number of variables, number of observations.
+2. Checking if there are missing values in the data.
+3. Checking the number of observations in each genre.
+4. Checking the distribution of the response (average rating)
+5. Checking the distribution of the num_votes
+
+We discussed our results of EDA in detail in the following.
+
+```{r}
+tar_load(movies_EDA)
+```
+
+The dataset has 2265 observations and 14 variables (6 categorical variables, 4 logical variables and 4 numeric variables).
+
+```{r}
+movies_EDA$movies_summary
+```
+
+According to the @fig-missing, variables "runtime_minutes" and "genres" have missing values. We may need to delete the observations that contain the missing values.
+
+```{r}
+#| fig-cap: Missing values plot
+#| label: fig-missing
+movies_EDA$missing_plot
+```
+
+@tbl-genres shows the number of observations in each unique class of variable "genre". There are numerous genres classes that only have \<10 observations. We may need to divide the genres into more general classes.
+
+```{r}
+#| tbl-cap: genres
+#| label: tbl-genres
+movies_EDA$genres_count
+```
+
+The histogram of "average_rating" is given @fig-ave_rate.
+
+The distribution is unimodal and balanced. There are no obvious outliers in the plot.
+
+```{r}
+#| fig-cap: A histogram of average rating.
+#| label: fig-ave_rate
+movies_EDA$ave_rate_hist
+```
+
+The histogram of the average rating is given @fig-num_vote.
+
+There are few values of "num_votes" very large but it is reasonable for some movies that have numerous audiences.
+
+We limited the num_votes to less than 10000 and redrew the histogram, given @fig-num_vote_less. The histogram plot is unimodal and strongly left-skewed. The majority of num_votes had values between 0 and 2500.
+
+```{r}
+#| fig-cap: A histogram of the number of votes.
+#| label: fig-num_vote
+movies_EDA$num_votes_hist
+```
+
+```{r}
+#| fig-cap: A histogram of the number of votes.
+#| label: fig-num_vote_less
+movies_EDA$num_votes_hist+xlim(0,10000)
+```
+@fig-scatter shows the relationship between log(num_votes) and log(average_rating). According to the plot, the average_rating doesn't have homogeneity. As num_votes grows larger the data points become less but more concentrated and there is a slight downward trend in the mode value of average_rating.
+
+```{r}
+#| fig-cap: A scatter plot of num_votes vs average_rating
+#| label: fig-scatter
+movies_EDA$scatter_plot
+```
+
+# Data Clean
+
+We filtered the Christmas movies, selected the variables that will be used in this analysis (genres, average_rating and num_votes), and deleted the observations that contain missing values.
+
+Now the dataset contains 1903 observations and 3 variables. 
+@tbl-mov_clean displays the first 6 observations in the cleaned dataset.
+```{r}
+#| tbl-cap: movies cleaned
+#| label: tbl-mov_clean
+tar_load(movies_clean)
+head(movies_clean)
+```
+
+Then, we create a new dataset with genres split into general classes. For example, observation with genres = "Drama,Family,Fantasy" has been split into 3 observations with the same average_rating" and "num_votes", but genres = "Drama", "Family" and "Fantasy" respectively.
+
+The new dataset has 3855 observations and 3 variables.
+The @tbl-mov_split displays the first 6 observations of the new dataset.
+```{r}
+
+#| tbl-cap: movies split
+#| label: tbl-mov_split
+tar_load(movies_split)
+head(movies_split)
+```
+
+We classified the genres which have rates of occurrence \<0.01 as "other", considering the statistical significance. Then, we plot box plots (@fig-boxplot_split) of average_rating VS genres.
+
+In one box plot, the lowest/ highest data point denotes the minimum/ maximum average rating in the related genres. The upper/ lower edge of the box denotes the 75%/ 25% quantile of the average rating, marked as Q3/ Q1 The line splitting the box denotes the median value and the single points denote the outliers, which are larger/ smaller than Q3+1.5(Q3-Q1) or Q1-1.5(Q3-Q1).
+
+According to @fig-boxplot_split, the majority of the genres had outliers. Considering the mean values will be significantly influenced by the outliers, we chose median values to compare the average ratings of the genres.
+
+We found the "Documentary" has the highest median value. Therefore, "Documentary" had the best average rating if we only consider the relationship between genres and average ratings.
+
+```{r}
+#| fig-cap: Box plots of average_rating and genres
+#| label: fig-boxplot_split
+tar_read(movies_boxplot)
+
+```
+
+We calculated the mean num_votes in each genre and found significant differences. For example, the mean of num_votes in "Documentary" is only around 56, which is almost 30 times less than in "Drama". Excessive differences in the number of votes may bias the results of the average ratings. For example, the high average ratings in the genre "Documentary" were probably rated by a few people who particularly like documentaries. Therefore, it is necessary to consider the influence of num_votes, to ensure the genre which has the best average ratings also being widely recognized.
+
+```{r}
+#| tbl-cap: Mean of number of votes
+#| label: tbl-num_votes_mean
+tar_load(numvote_mean)
+numvote_mean
+```
+
+
+We built random forest with the movies_split dataset. The numerical variables (average_ratings, num_votes) are normalized, the genres whose rates of occurrence are less than 0.01 were classified as "other" and dummy variables were created with one hot encoding. We aimed to investigate the interactive influence of the num_votes and genres on average_rating. Therefore, we added the interaction term between the dummy variables and num_votes.
+
+We used 10-fold cross-validation to tune the mtry (i.e. the number of variables randomly sampled at each split) and min_n (the minimum number of data points in a node that can be split further) and the random forest has 100 decision trees.
+
+The model having the minimum rmse was selected. Our best result has mtry=4, min_n=40, trees=100 and the rmse = 1.135. 
+
+```{r}
+tar_load(movies_rf)
+print(movies_rf$model)
+sprintf('rmse=%f' ,movies_rf$rmse)
+```
+
+Based on the best model, we calculated the feature importance of each variable. According to Figure @fig-VIP, the num_votes has significant influence on the average_rating. If we do not consider the interaction terms, the genre "Horror" has the largest positive influence on the average rating. If we consider the interactive influence of num_votes and genres, then the genre "Drama" is the genre with the biggest boost to the average rating.
+
+
+```{r}
+#| fig-cap: Variable Importance Plot
+#| label: fig-VIP
+movies_rf$VIP
+```
+
+
